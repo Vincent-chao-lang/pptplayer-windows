@@ -19,6 +19,9 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
+    # Release 上传需要写权限；artifact 仅作备份（配额可能已满，故允许失败）
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -53,8 +56,34 @@ jobs:
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
+        # 私有仓库 artifact 配额仅 500MB，满了会让整个 job 失败；
+        # 真正的取件口是下面的 Release 附件，这里失败不该阻断交付。
+        continue-on-error: true
         with:
           name: PPTPlayer-windows-x64
           path: src-tauri/target/release/PPTPlayer.exe
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 探测 release 是否存在会返回非零码，不能被当成脚本错误中断
+          $ErrorActionPreference = 'Continue'
+          $exe = 'src-tauri/target/release/PPTPlayer.exe'
+          $mb  = [math]::Round((Get-Item $exe).Length / 1MB, 2)
+          $tag = 'v0.1.0'
+          # 用单行字符串拼接，避免 PowerShell 的 here-string 在 YAML 里缩进被破坏
+          $notes = "单文件 exe，$mb MB。`n`n" +
+                   "用法：双击运行，把 .pptx 拖进窗口。←/→ 翻页，F 全屏，T 开关缩略图。`n" +
+                   "依赖系统 WebView2 运行时（Win11 预装；Win10 绝大多数已有，缺失时会弹提示并给出下载地址）。`n" +
+                   "未签名，首次运行如遇 SmartScreen 请点「更多信息 → 仍要运行」。"
+
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "PPTPlayer $tag" --notes $notes
+          }
+          gh release upload $tag $exe --clobber
+          Write-Host "release: https://github.com/${{ github.repository }}/releases/tag/$tag"
