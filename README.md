@@ -2,6 +2,17 @@
 
 本地 PPT 播放器的 Windows 桌面外壳。渲染逻辑全部在前端，宿主只做三件事：开窗口、装资源、兜错误。
 
+## 交付形态（Release 里两个附件）
+
+| 文件 | 体积（实测） | 形态 | 适用 |
+|---|---|---|---|
+| `PPTPlayer_<ver>_x64-setup.exe` | **1.19 MB** | NSIS 安装包 | 常规安装：开始菜单 + 卸载项，当前用户装，不弹 UAC |
+| `PPTPlayer.exe` | **3.09 MB** | 绿色便携版 | 免安装、放 U 盘、临时给别人演示 |
+| `SHA256SUMS.txt` | 178 B | 校验值 | `shasum -c` / `certutil -hashfile` |
+
+安装包比免安装版还小，是因为 NSIS 用 LZMA 又压了一遍（3.09 MB → 1.19 MB，约 38%）。
+体积下限由「是否自带浏览器引擎」决定，两者都不带 —— 都用系统 WebView2。
+
 ## 体积账（这是选 Tauri 的唯一理由）
 
 **实测产物：3.09 MB（3,240,960 字节），单文件，无附带 DLL。**
@@ -13,7 +24,13 @@
 | `.rdata` + `.pdata` + `.data` | 约 0.6 MB | 资源表、内嵌资源、异常表 |
 | `.rsrc`（图标/版本信息） | 19 KB | 多尺寸 ico 已嵌入 |
 | **exe 合计** | **3.09 MB** | x64，GUI 子系统 |
+| NSIS 安装包 | **1.19 MB** | 上面的 exe 再经 LZMA + 安装脚本；**不含** WebView2 引导器 |
 | WebView2 运行时 | **0（不计入）** | 复用系统的：Win11 预装，Win10 绝大多数已有 |
+
+安装包为什么能比 exe 还小：NSIS 默认 `lzma` 整包压缩，而这 1.19 MB 里没有浏览器内核、
+没有运行库、也没有 1.8 MB 的 WebView2 引导器（选了 `downloadBootstrapper`：缺失时才在安装期联网下载）。
+代价是**离线装机会卡在 WebView2 这一步**——要离线装，得把 `webviewInstallMode` 改成 `embedBootstrapper`（+1.8 MB）
+或 `offlineInstaller`（+127 MB）。
 
 对照：Electron 同类 80–150 MB；.NET 自包含 30–60 MB。差别不在优化，而在**是否自带浏览器引擎**。
 
@@ -27,30 +44,45 @@
 | `vcruntime140.dll` / `msvcp140.dll` | 未出现 | 不依赖 VC++ 运行库，Win10+ 可直接跑 |
 | `index.html` 资源键 | 命中 6 次 | 前端已注册为内嵌资源 |
 | 前端原文 | 命中 0 次 | 已 brotli 压缩（所以搜不到明文） |
-| SHA256 | `2693929A…C0D1` | 与 CI 报告一致，下载无损 |
+| SHA256 | 每轮构建变化 | 以 Release 里的 `SHA256SUMS.txt` 为准，与 CI 报告一致即下载无损 |
+
+安装包（NSIS）同样可静态核验，`inspect-exe.py` 直接跑：
+
+| 检查项 | 结果 | 意义 |
+|---|---|---|
+| PE 头 | PE32（32 位安装器外壳）| NSIS 桩历来是 x86，正常；装的仍是 x64 程序 |
+| 子系统 | `2 = GUI` | 双击出向导，不弹黑框 |
+| 节 | 5 个，含 `.ndata` | `.ndata` 是 NSIS 标志段 |
+| 导入 DLL | 7 个，全系统库 | `kernel32/user32/shell32/ole32/advapi32/comctl32/gdi32` |
+| `Nullsoft` 字符串 | 命中 3 次 | 确认是 NSIS 包 |
+| 载荷熵 | 8.00 bits/byte | 全包 LZMA，所以里面搜不到 `PPTPlayer` 等明文（这是压缩生效，不是没打进去） |
+| makensis 日志 | `produce …\bundle\nsis\PPTPlayer_0.2.0_x64-setup.exe` | CI 日志可回溯打包过程 |
 
 
 ## 构建
 
-产物由 GitHub Actions 在 `windows-latest` 上原生编译（macOS 交叉编译 Tauri 官方不支持）。
+产物由 GitHub Actions 在 `windows-latest` 上原生编译并打包
+（Tauri 官方**不支持**从 macOS 交叉产出 Windows 安装包，所以本机只能校验、不能出包）。
 
-1. 推到 GitHub，Actions 里的 `build-windows` 会自动跑（或手动 `workflow_dispatch`），约 6 分钟。
-2. **取件口是 Release**：`https://github.com/Vincent-chao-lang/pptplayer-windows/releases/tag/v0.1.0`，
-   附件就是 `PPTPlayer.exe`（私有仓库需登录）。
-3. artifact（`PPTPlayer-windows-x64`）只作备份。私有仓库 artifact 配额仅 500 MB，
+1. 推到 GitHub，Actions 里的 `build-windows` 会自动跑（或手动 `workflow_dispatch`），约 3–4 分钟。
+2. CI 跑 `tauri build`，一次产出两样：`target/release/PPTPlayer.exe` 与
+   `target/release/bundle/nsis/PPTPlayer_<ver>_x64-setup.exe`。
+3. 同一次运行里自动建 Release（tag 取自 `tauri.conf.json` 的 `version`）并上传三个附件；
+   已存在同名 tag 时只更新说明与附件（`--clobber`）。
+4. artifact（`PPTPlayer-windows-x64`）只作备份。私有仓库 artifact 配额仅 500 MB，
    满了会让上传失败，所以那一步设了 `continue-on-error`，不阻断交付。
 
-本地只做静态校验（不产出 exe）：
+**升版本要改两处**：`src-tauri/tauri.conf.json` 的 `version`（决定安装包文件名与 Release tag）
+和 `src-tauri/Cargo.toml` 的 `version`（决定 exe 内的版本资源）。
+
+本地只能做这两件事（都不需要 Windows）：
 
 ```bash
-cd src-tauri && cargo check     # 校验 tauri.conf.json / capabilities / Rust 代码
+cd src-tauri && cargo check     # 校验 tauri.conf.json（含 bundle 配置）/ capabilities / Rust 代码
+python3 ../../inspect-exe.py ../dist/windows/PPTPlayer.exe   # PE 结构静态核验
 ```
 
-产物静态核验（Mac 上即可跑，不需要 Windows）：
-
-```bash
-python3 ../inspect-exe.py ../dist/windows/PPTPlayer.exe
-```
+想在本机看 Tauri 是否认得这份工程：`npx -y @tauri-apps/cli@^2 info`（会打印 `build-type: bundle` 与解析出的配置）。
 
 ## 改了前端之后
 
@@ -66,28 +98,43 @@ node desktop/tools/sync-web.mjs     # dist/PPTPlayer.html -> desktop/web/index.h
 
 ## 使用
 
-双击 `PPTPlayer.exe` → 把 `.pptx` 拖进窗口。`←/→` 翻页、`F` 全屏、`T` 开关缩略图。
+**安装版**：双击 `PPTPlayer_<ver>_x64-setup.exe` → 中文向导 → 装完可从开始菜单/桌面快捷方式启动。
+- 安装目录：`%LOCALAPPDATA%\PPTPlayer`（当前用户，不弹 UAC）
+- 卸载：设置 → 应用 → PPTPlayer，或安装目录里的 `uninstall.exe`
+- 完成页有「创建桌面快捷方式」（默认勾选）和「立即运行 PPTPlayer」两个勾选项
+
+**便携版**：双击 `PPTPlayer.exe` 直接用。
+
+两种形态操作一致：把 `.pptx` 拖进窗口。`←/→` 翻页、`F` 全屏、`T` 开关缩略图。
 **换文件**：工具栏「打开文件」按钮、`Ctrl+O`，或把新文件直接拖到画面任意处。
 
-## 尚未验证的部分（重要）
+## 验证边界
 
-构建在 macOS 上完成、编译在 Windows runner 上完成，**但没有任何 Windows 机器真正运行过它**。
-以下是首次运行时需要逐项确认的，按风险从高到低：
+| 环节 | 状态 |
+|---|---|
+| 前端渲染/播放 | 双引擎回归（Chromium + WebKit），见上一级 `verify-*.mjs` |
+| 便携版 exe 实际运行 | **已在 Windows 上验证通过**（v0.1.0 起，含拖放、动画、音频、换文件） |
+| CI 编译 + PE 静态结构 | 每轮自动核验（GUI 子系统、无 `WebView2Loader.dll`、`.rsrc` 图标已嵌入） |
+| **NSIS 安装包的实际安装** | **未验证** —— 只有 Windows 才能装。本轮新增，请首次安装后按下面几项确认 |
+
+安装包首次使用需确认（按风险排序）：
 
 | # | 待确认 | 判断标准 |
 |---|---|---|
-| 1 | 窗口能否正常显示幻灯片 | 出现拖放区 → 拖入 pptx → 渲染出页面而不是空白 |
-| 2 | 拖放是否生效 | 拖入文件若毫无反应，说明 `dragDropEnabled: false` 未生效，需改用 Tauri 的 drag-drop 事件转发 |
-| 3 | `F` 全屏行为 | 若能铺满且无标题栏 = 正常；若只铺满窗口区域 = 需补 `setFullscreen` IPC |
-| 4 | 中文字体断行 | 与本机单文件版对比同一页，字宽/换行应一致 |
+| 1 | 向导是否中文、无乱码 | 语言配置为 SimpChinese 优先；乱码 = 语言文件或编码问题 |
+| 2 | 装完能否从开始菜单启动 | 能启动 = 快捷方式指向与 `mainBinaryName` 一致 |
+| 3 | 桌面快捷方式 | 完成页勾选后应出现 `PPTPlayer.lnk` |
+| 4 | 卸载是否干净 | 设置 → 应用卸载后，`%LOCALAPPDATA%\PPTPlayer` 应被删除；WebView2 缓存目录留给系统 |
+| 5 | 缺 WebView2 的机器 | 安装期应静默联网装它；无网络时会失败（已知代价，见「体积账」） |
 
 ## 已知限制（桌面版特有）
 
 | 项 | 现象 | 说明 |
 |---|---|---|
-| 文件关联 | 不能双击 pptx 直接打开 | 需要注册表 + 命令行参数，本版未做 |
-| `F` 全屏 | 可能只铺满窗口、保留标题栏 | WebView2 的 Fullscreen API 默认作用于 webview 区域；要真全屏需加一条 `setFullscreen` IPC（约 15 行），待 Windows 实测确认后再定 |
-| 缓存落盘 | `%LOCALAPPDATA%\cn.pptplayer.desktop` 会有几十 MB | WebView2 的 User Data Folder，属正常缓存；需要可加限制或重定向 |
-| 未签名 | 首次运行弹 SmartScreen「Windows 已保护你的电脑」 | 点「更多信息 → 仍要运行」；消除需代码签名证书 |
-| 缺 WebView2 | 弹原生提示框并给出下载地址 | 已处理，不会静默失败 |
+| 文件关联 | 不能双击 pptx 直接打开 | 安装包未注册文件关联；需要 `fileAssociations` 配置 + 命令行参数，本版未做 |
+| `F` 全屏 | 可能只铺满窗口、保留标题栏 | WebView2 的 Fullscreen API 默认作用于 webview 区域；要真全屏需加一条 `setFullscreen` IPC（约 15 行），Windows 实测后确认 |
+| 缓存落盘 | `%LOCALAPPDATA%\cn.pptplayer.desktop` 会有几十 MB | WebView2 的 User Data Folder，属正常缓存；需要可加限制或重定向。**卸载不会清它**（系统级组件，多程序共用） |
+| 未签名 | 安装包与 exe 首次运行都可能弹 SmartScreen | 点「更多信息 → 仍要运行」；安装包还会显示「未知发布者」。消除需代码签名证书（年费） |
+| 缺 WebView2 | 安装包会静默联网装；便携版弹原生提示框并给出下载地址 | 两条路径都处理了，不会静默失败；纯离线装机需改 `webviewInstallMode` |
+| 自动更新 | 无 | 未接 updater。升级＝下载新安装包覆盖安装（NSIS 会走"已安装"维护流程） |
 | 格式/引擎限制 | 同单文件版 | 见 `../LIMITATIONS.md` |

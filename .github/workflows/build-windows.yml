@@ -78,10 +78,17 @@ jobs:
           Write-Host ("SHA256 setup  {0}" -f $setSha)
 
           # 校验和文件随包上传，方便对方核对
-          @(
+          # 用 [IO.File]::WriteAllText 显式写 LF：Out-File 默认 CRLF，
+          # 会让 macOS / Linux 的 `shasum -c` 把文件名带成 "xxx.exe\r" 而校验失败
+          $sums = @(
             "$setSha  $($setupItem.Name)",
             "$exeSha  $($item.Name)"
-          ) | Out-File -FilePath 'SHA256SUMS.txt' -Encoding ascii
+          ) -join "`n"
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD 'SHA256SUMS.txt'),
+            $sums + "`n",
+            [Text.Encoding]::ASCII
+          )
 
           @(
             "| 产物 | 体积 |",
@@ -132,9 +139,10 @@ jobs:
             '',
             '## 装哪个',
             '',
-            ('- **PPTPlayer_{0}_x64-setup.exe**（{1} MB）—— 推荐。装到 %LOCALAPPDATA%\PPTPlayer，' -f $ver, $setupMb),
-            '  自动创建开始菜单与桌面快捷方式，可从「设置 → 应用」卸载。当前用户安装，不弹 UAC。',
-            ('- **PPTPlayer.exe**（{0} MB）—— 便携版，免安装，双击即用。' -f $exeMb),
+            ('- **PPTPlayer_{0}_x64-setup.exe**（{1} MB）—— 推荐。当前用户安装，不弹 UAC；' -f $ver, $setupMb),
+            '  装到 %LOCALAPPDATA%\PPTPlayer，进「设置 → 应用」可卸载。',
+            '  开始菜单快捷方式自动创建；完成页有「创建桌面快捷方式」勾选项（默认已勾）。',
+            ('- **PPTPlayer.exe**（{0} MB）—— 便携版，免安装，双击即用，适合放 U 盘。' -f $exeMb),
             '',
             '## 用法',
             '',
@@ -143,9 +151,9 @@ jobs:
             '',
             '## 注意',
             '',
-            '- 依赖 WebView2 运行时：Win11 自带，Win10 绝大多数已有。安装包在缺失时会自动联网安装它。',
+            '- 依赖 WebView2 运行时：Win11 自带，Win10 绝大多数已有。安装包在缺失时会静默联网安装它（约 1-2 分钟）。',
             '- 便携版没有这一步 —— 若缺失会弹提示并给出下载地址。',
-            '- 未做代码签名，首次运行如遇 SmartScreen 请点「更多信息 → 仍要运行」。',
+            '- 未做代码签名：安装包与 exe 首次运行都可能弹 SmartScreen，点「更多信息 → 仍要运行」。',
             '- 校验值见 SHA256SUMS.txt。'
           ) -join "`n"
 
