@@ -1,0 +1,60 @@
+name: build-windows
+
+# 只产出一个可执行文件，不出安装包（bundle.active=false）。
+# 体积目标：exe ~2-4 MB，渲染引擎复用系统 WebView2。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/**'
+      - 'web/**'
+      - '.github/workflows/build-windows.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust (stable, x86_64-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build release
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+      - name: Verify output and report size
+        shell: pwsh
+        run: |
+          $exe = 'src-tauri/target/release/PPTPlayer.exe'
+          if (-not (Test-Path $exe)) {
+            Get-ChildItem 'src-tauri/target/release' -ErrorAction SilentlyContinue | Select-Object Name, Length
+            throw "未生成 $exe"
+          }
+          $item = Get-Item $exe
+          $mb = [math]::Round($item.Length / 1MB, 2)
+          $sha = (Get-FileHash $exe -Algorithm SHA256).Hash
+          Write-Host ("PPTPlayer.exe  {0} MB  ({1} bytes)" -f $mb, $item.Length)
+          Write-Host ("SHA256  {0}" -f $sha)
+          @(
+            "| exe 体积 | $mb MB |",
+            "| SHA256 | $sha |"
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PPTPlayer-windows-x64
+          path: src-tauri/target/release/PPTPlayer.exe
+          if-no-files-found: error
+          retention-days: 30

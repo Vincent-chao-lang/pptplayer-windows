@@ -1,0 +1,31 @@
+[package]
+name = "ppt-player"
+version = "0.1.0"
+description = "本地 PPT 播放器（WebView2 内核，零联网）"
+edition = "2021"
+rust-version = "1.77.2"
+
+[[bin]]
+name = "PPTPlayer"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# 仅 Windows：缺 WebView2 时弹原生 MessageBox（无控制台窗口时的唯一可见出口）
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+# 体积优先：单编译单元 + LTO + 去掉符号表
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

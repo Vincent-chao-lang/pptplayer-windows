@@ -1,0 +1,7 @@
+# 构建产物
+/src-tauri/target
+# Tauri 生成的 schema/中间文件
+/src-tauri/gen
+# 系统垃圾
+.DS_Store
+Thumbs.db

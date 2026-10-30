@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "最小权限：播放器不调用任何 Tauri IPC，只保留核心默认集",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
