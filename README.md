@@ -66,7 +66,8 @@ node desktop/tools/sync-web.mjs     # dist/PPTPlayer.html -> desktop/web/index.h
 
 ## 使用
 
-双击 `PPTPlayer.exe` → 把 `.pptx` 拖进窗口（或点“选择文件”）。`←/→` 翻页、`F` 全屏、`T` 开关缩略图。
+双击 `PPTPlayer.exe` → 把 `.pptx` 拖进窗口。`←/→` 翻页、`F` 全屏、`T` 开关缩略图。
+**换文件**：工具栏「打开文件」按钮、`Ctrl+O`，或把新文件直接拖到画面任意处。
 
 ## 尚未验证的部分（重要）
 
