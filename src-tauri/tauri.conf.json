@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PPTPlayer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "cn.pptplayer.desktop",
   "build": {
     "frontendDist": "../web"
@@ -28,13 +28,34 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all",
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "publisher": "企业AI落地坊",
+    "copyright": "© 2026 企业AI落地坊",
+    "shortDescription": "本地 PPT 播放器，零联网、零账户",
+    "longDescription": "直接用系统 WebView2 渲染 pptx 的轻量播放器。不联网、不登录、不落缓存，可播放文字、图形、图片、表格、图表、动画、内嵌音视频。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "compression": "lzma"
+      }
+    }
   }
 }
