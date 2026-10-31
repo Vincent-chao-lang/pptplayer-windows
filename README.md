@@ -72,6 +72,19 @@
 4. artifact（`PPTPlayer-windows-x64`）只作备份。私有仓库 artifact 配额仅 500 MB，
    满了会让上传失败，所以那一步设了 `continue-on-error`，不阻断交付。
 
+**产物不会自己回到本地。** 打包在 GitHub 的 Windows 机器上跑，本地 `dist/windows/`
+是「上一次手动下载」的快照，不跟着 Release 走——这里曾放着 v0.4.1 的旧包，而 Release
+已经是 v0.5.1。要么手动从 Release 页下载，要么跑：
+
+```bash
+node tools/fetch-release.mjs             # 最新 Release → ../dist/windows，并逐项校验 SHA256
+node tools/fetch-release.mjs --dry-run   # 只比对本地与 Release 差多少，不下载
+node tools/fetch-release.mjs --tag v0.4.1 --out /tmp/old
+```
+
+脚本先按体积比对本地文件与 Release，一致就跳过；下载完按 `SHA256SUMS.txt` 重算，
+对不上非零退出——**别把校验失败的包发给买家**。
+
 **升版本要改两处**：`src-tauri/tauri.conf.json` 的 `version`（决定安装包文件名与 Release tag）
 和 `src-tauri/Cargo.toml` 的 `version`（决定 exe 内的版本资源）。
 
@@ -79,7 +92,7 @@
 
 ```bash
 cd src-tauri && cargo check     # 校验 tauri.conf.json（含 bundle 配置）/ capabilities / Rust 代码
-python3 ../../inspect-exe.py ../dist/windows/PPTPlayer.exe   # PE 结构静态核验
+cd .. && python3 ../inspect-exe.py ../dist/windows/PPTPlayer.exe   # PE 结构静态核验
 ```
 
 想在本机看 Tauri 是否认得这份工程：`npx -y @tauri-apps/cli@^2 info`（会打印 `build-type: bundle` 与解析出的配置）。
