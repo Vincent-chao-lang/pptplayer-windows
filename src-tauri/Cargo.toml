@@ -1,6 +1,6 @@
 [package]
 name = "ppt-player"
-version = "0.3.0"
+version = "0.5.1"
 description = "本地 PPT 播放器（WebView2 内核，零联网）"
 edition = "2021"
 rust-version = "1.77.2"
@@ -15,11 +15,20 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 
+# 离线注册码：非对称验签 + 指纹哈希。只有公钥进包，私钥在 tools/keys/（不入库）。
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+
 # 仅 Windows：缺 WebView2 时弹原生 MessageBox（无控制台窗口时的唯一可见出口）
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
   "Win32_Foundation",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_System_Registry",
+  "Win32_System_SystemInformation",
+  "Win32_Storage_FileSystem",
+  "Win32_System_IO",
 ] }
 
 # 体积优先：单编译单元 + LTO + 去掉符号表

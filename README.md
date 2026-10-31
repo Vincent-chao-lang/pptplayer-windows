@@ -96,6 +96,65 @@ node desktop/tools/sync-web.mjs     # dist/PPTPlayer.html -> desktop/web/index.h
 
 `web/index.html` 已入库，所以 CI 侧不需要 Node。
 
+## 授权与激活（v0.5.1 起）
+
+桌面版按**台**授权，未激活不能使用。整套是**离线**的：验签在 Rust 侧，运行期零网络请求。
+
+```
+启动 → index.html 的闸门问一次 license_status
+        ├─ licensed=true  → 正常进播放器
+        └─ 否则           → location.replace('gate.html') 显示机器码，等激活
+```
+
+| 文件 | 作用 |
+|---|---|
+| `src-tauri/src/license.rs` | 指纹、Base32、Ed25519 验签、授权文件读写、错误文案 |
+| `src-tauri/src/pubkey.rs` | **公钥**（32 字节，可公开，随代码提交） |
+| `src-tauri/src/main.rs` | 三个命令：`license_status` / `license_activate` / `license_info` |
+| `web/gate.html` | 激活页（机器码 + 复制 + 注册码粘贴） |
+| `tools/license-keygen.mjs` | 发码工具（**只有作者用**） |
+| `tools/keys/license.key` | **私钥**，已被 .gitignore 排除，永不入库、永不进包 |
+
+授权文件：`%APPDATA%\cn.pptplayer.desktop\license.lic`（macOS 为 `~/Library/Application Support/cn.pptplayer.desktop/`）。
+
+### 注册码格式
+
+73 字节 → Crockford Base32 **117 字符**（每 5 位一组便于核对）：
+
+```
+[0]      版本 2（v0.5.1 起；版本 1 的旧码会被明确拒绝，不会误报"另一台电脑"）
+[1..3]   到期日（相对 2026-01-01 的天数，0 = 永久）
+[3..9]   机器指纹前 6 字节
+[9..73]  Ed25519 签名
+```
+
+指纹来源按可信度分级，**每级用不同盐前缀**，降级不会与正常模式撞码：
+
+| 级别 | 取源 | 重装系统 | 换硬件 |
+|---|---|---|---|
+| `smbios` | 主板 SMBIOS Type 1 UUID（`GetSystemFirmwareTable`，不走 WMI/COM） | 不变 | 换主板才变 |
+| `disk` | 物理盘 0 序列号 + `MachineGuid` | 会变 | 换盘会变 |
+| `weak` | `MachineGuid` + `PROCESSOR_IDENTIFIER` | 会变 | 基本不变 |
+| 无 | 读不到 → 机器码为空，激活页禁用（不再伪造 "no-guid" 共享码） | — | — |
+
+占位值会被识别并跳过：全 0/全 FF/`03000200-0400-0500-0006-000700080009` 这类 UUID，
+以及 `To Be Filled By O.E.M.` 这类磁盘序列号。
+**不采集**用户名、IP、文件内容等隐私数据，且不上传任何东西。
+
+### 自检命令
+
+```bash
+cd src-tauri && cargo test                      # 单元测试：Base32、指纹形状、拒绝垃圾码、日期
+cargo run -- --selftest                         # 打印本机机器码
+PPT_LICENSE="<注册码>" cargo run -- --selftest   # 交叉验签（Node 签发 → Rust 验证）
+cd .. && node verify-gate.mjs                   # 前端闸门（需要 8877 端口的静态服务）
+```
+
+### 为什么不联网激活
+
+商品卖点第一句就是"运行期零网络请求"。加在线校验等于把这句话删掉，还会引入服务器成本和隐私问题。
+代价是**每单必须人工发一次码**——这是明确接受的取舍，不是遗漏。
+
 ## 使用
 
 **安装版**：双击 `PPTPlayer_<ver>_x64-setup.exe` → 中文向导 → 装完可从开始菜单/桌面快捷方式启动。

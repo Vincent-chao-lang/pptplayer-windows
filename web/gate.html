@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>激活 PPT Player</title>
+<style>
+  :root {
+    --bg: #0d1016; --panel: #151a22; --line: #262d3a; --fg: #e8ecf3;
+    --muted: #8b95a8; --accent: #2f6bf6; --ok: #35b37e; --err: #e0575b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { display: flex; align-items: center; justify-content: center; padding: 32px; }
+  .card {
+    width: 100%; max-width: 640px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 16px;
+    padding: 34px 36px 26px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+  }
+  .brand { font-size: 12px; letter-spacing: .22em; color: var(--muted); font-weight: 600; }
+  h1 { margin: 14px 0 0; font-size: 26px; letter-spacing: -.01em; }
+  .sub { margin: 10px 0 0; font-size: 14px; line-height: 1.75; color: var(--muted); }
+  .sec { margin-top: 26px; }
+  .lbl {
+    font-size: 12px; color: var(--muted); letter-spacing: .12em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .lbl .hint { letter-spacing: 0; font-size: 12px; color: #5f6878; }
+  .mcrow { display: flex; gap: 10px; margin-top: 9px; }
+  /* 弱指纹提示：用琥珀色而不是红色——这不是错误，只是"这台机器上我们能拿到的
+     标识不够硬"，个人用户照常用，单位批量部署才需要走企业授权。 */
+  #sourceHint {
+    display: none; margin-top: 10px; font-size: 12px; line-height: 1.7;
+    color: #d8a657; border-left: 2px solid #7a5c25; padding-left: 10px;
+  }
+  #sourceHint.show { display: block; }
+  #machine {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-family: "SF Mono", Consolas, "Courier New", monospace;
+    font-size: 20px; letter-spacing: .16em; color: #cfe0ff;
+    background: #0a0d13; border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 10px; user-select: all; white-space: nowrap;
+  }
+  button {
+    font: inherit; cursor: pointer; border-radius: 10px;
+    border: 1px solid var(--line); background: #1b2230; color: var(--fg);
+    padding: 0 16px; transition: background .15s, border-color .15s, opacity .15s;
+  }
+  button:hover:not(:disabled) { background: #222b3c; border-color: #35405a; }
+  button:disabled { opacity: .5; cursor: default; }
+  #copy { white-space: nowrap; font-size: 13px; }
+  #copy.done { color: var(--ok); border-color: #2b5c47; }
+  textarea {
+    width: 100%; margin-top: 9px; resize: vertical; min-height: 86px;
+    font-family: "SF Mono", Consolas, "Courier New", monospace;
+    font-size: 13px; line-height: 1.6; letter-spacing: .04em;
+    color: var(--fg); background: #0a0d13; border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px 14px; outline: none;
+  }
+  textarea:focus { border-color: #35507f; }
+  textarea::placeholder { color: #4d5666; }
+  .actions { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+  #go {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+    font-weight: 600; padding: 12px 26px;
+  }
+  #go:hover:not(:disabled) { background: #2a61e0; border-color: #2a61e0; }
+  #msg { font-size: 13px; line-height: 1.6; flex: 1; min-height: 20px; }
+  #msg.err { color: var(--err); }
+  #msg.ok { color: var(--ok); }
+  .foot {
+    margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-size: 12px; color: #5f6878; line-height: 1.9;
+  }
+  .foot b { color: #8b95a8; font-weight: 600; }
+  .steps { margin: 12px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); line-height: 1.9; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">PPT PLAYER · 按台授权</div>
+  <h1 id="title">激活这台电脑</h1>
+  <p class="sub" id="sub">本软件按电脑授权。把下面这串机器码发给卖家，你会收到一串注册码，粘贴进来即可。</p>
+
+  <div class="sec">
+    <div class="lbl">本机机器码<span class="hint">复制后整串发送，别手打</span></div>
+    <div class="mcrow">
+      <div id="machine">读取中…</div>
+      <button id="copy" type="button">复制</button>
+    </div>
+    <div id="sourceHint"></div>
+  </div>
+
+  <div class="sec" id="inputWrap">
+    <div class="lbl">注册码<span class="hint">整段粘贴即可，换行和空格会自动忽略</span></div>
+    <textarea id="code" spellcheck="false" placeholder="在此粘贴注册码…"></textarea>
+    <div class="actions">
+      <button id="go" type="button">激活</button>
+      <div id="msg"></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>没有注册码？</b>下单后把上面的机器码发到旺旺，或邮件至 2819699195@qq.com。<br>
+    换电脑才需要重新申请一次（同一台机器重装系统不受影响，重装也不额外收费）。<br>
+    © 2026 北京二叁零零信息咨询中心
+  </div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var machine = $('machine'), code = $('code'), go = $('go'), msg = $('msg'), copy = $('copy');
+  var tauri = window.__TAURI__;
+
+  function setMsg(text, kind) {
+    msg.textContent = text || '';
+    msg.className = kind || '';
+  }
+
+  if (!tauri || !tauri.core || !tauri.core.invoke) {
+    machine.textContent = '不可用';
+    go.disabled = true;
+    setMsg('此页仅在桌面版程序内可用', 'err');
+    return;
+  }
+  var invoke = tauri.core.invoke;
+
+  function enterPlayer() {
+    location.replace('index.html');
+  }
+
+  // 已激活的情况（比如用户手动访问了这个页面）：直接放行
+  function applyStatus(s) {
+    if (!s) return;
+
+    // 机器码为空 = 读不到任何硬件标识。此时不给假码，也禁用激活，
+    // 否则买家会拿着一个人人相同的假码来找你换码，越换越乱。
+    if (!s.machine) {
+      machine.textContent = '不可用';
+      go.disabled = true;
+      copy.disabled = true;
+    } else {
+      machine.textContent = s.machine;
+    }
+
+    // 弱指纹：只拿得到系统级标识（MachineGuid / 主机名），整批克隆的机器会同码。
+    // 不拦着用，但要把话说清楚——这是售后判断"是不是批量部署"的唯一线索。
+    if (s.source === 'weak') {
+      var hint = $('sourceHint');
+      hint.textContent =
+        '这台机器只能读取到系统级标识（虚拟机和部分白牌主板常见）。个人使用不受影响；' +
+        '如果是单位批量部署，请联系客服走企业授权。';
+      hint.classList.add('show');
+    }
+    if (s.licensed) {
+      $('title').textContent = '这台电脑已激活';
+      $('sub').textContent = s.permanent
+        ? '授权类型：永久 · 直接进入即可。'
+        : '授权有效期至 ' + s.expires + '。';
+      $('inputWrap').classList.add('hidden');
+      setMsg('已激活', 'ok');
+      setTimeout(enterPlayer, 700);
+    } else if (s.error) {
+      setMsg(s.error, 'err');       // 授权文件损坏/过期时，说明真实原因
+    }
+  }
+
+  invoke('license_status').then(applyStatus).catch(function () {
+    machine.textContent = '读取失败';
+  });
+
+  copy.addEventListener('click', function () {
+    var text = machine.textContent;
+    var done = function () {
+      copy.textContent = '已复制';
+      copy.classList.add('done');
+      setTimeout(function () { copy.textContent = '复制'; copy.classList.remove('done'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(fallback);
+    } else {
+      fallback();
+    }
+    function fallback() {
+      // WebView2 里 clipboard API 偶尔被策略挡住，退回 execCommand 兜底
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      if (ok) done(); else setMsg('复制失败，请手动选中机器码', 'err');
+    }
+  });
+
+  go.addEventListener('click', function () {
+    var v = code.value.trim();
+    if (!v) { setMsg('先粘贴注册码', 'err'); code.focus(); return; }
+    go.disabled = true;
+    setMsg('校验中…');
+    invoke('license_activate', { code: v })
+      .then(function (s) {
+        setMsg('激活成功，正在进入…', 'ok');
+        applyStatus(s);
+      })
+      .catch(function (e) {
+        // Rust 侧返回的是给人看的中文原因，直接用
+        setMsg(String(e && e.message ? e.message : e), 'err');
+        go.disabled = false;
+      });
+  });
+
+  code.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') go.click();
+  });
+})();
+</script>
+</body>
+</html>
