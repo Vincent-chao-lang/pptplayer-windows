@@ -98,20 +98,30 @@ function signCode(mc, opts) {
   if (!existsSync(PRIV)) throw new Error('找不到私钥，先跑 init');
   const key = createPrivateKey(readFileSync(PRIV));
   const days = Number(opts.days ?? 0);
+  if (!Number.isFinite(days)) throw new Error('--days 需要一个数字');
+  // 负数绝不能默默当成 0：exp 字段 0 = 永久，打错一个负号就等于
+  // 发出一张不可回收的永久券，而且发的时候看不出来。
+  if (days < 0) {
+    throw new Error('--days 不能为负（0 表示永久）。要造一枚已过期的码供测试，改用 --expired');
+  }
+  if (opts.expired && days > 0) throw new Error('--days 与 --expired 只能给一个');
   const fp = machineCodeToBytes(mc);
 
   const payload = Buffer.alloc(9);
   payload[0] = VER;
   // exp 字段是「相对 2026-01-01 的第几天」，0 表示永久
-  const expDay = days > 0
-    ? Math.floor((Date.now() - Date.UTC(2026, 0, 1)) / 86400000) + days
-    : 0;
+  // --expired 直接写 1（= 2026-01-02），必然在过去，用来验「过期码会被拒」这条路径
+  const expDay = opts.expired
+    ? 1
+    : days > 0
+      ? Math.floor((Date.now() - Date.UTC(2026, 0, 1)) / 86400000) + days
+      : 0;
   payload.writeUInt16BE(Math.max(0, expDay), 1);
   fp.copy(payload, 3);
 
   const sig = sign(null, payload, key); // Ed25519 自带哈希，传入 null
   const code = encode(Buffer.concat([payload, sig]));
-  return { code: group(code), payload };
+  return { code: group(code), payload, expDay };
 }
 
 // ---------------- verify（自检用，和 Rust 侧同一套规则） ----------------
@@ -150,12 +160,28 @@ try {
   else if (cmd === 'show') show();
   else if (cmd === 'sign') {
     const mc = positional[0];
-    if (!mc) throw new Error('用法：sign <机器码> [--days N]');
-    const { code } = signCode(mc, { days: flag('days') });
+    if (!mc) throw new Error('用法：sign <机器码> [--days N | --expired]');
+    const { code, expDay } = signCode(mc, {
+      days: flag('days'),
+      expired: rest.includes('--expired'),
+    });
+    // 到期日打在签发输出里：发码的人得在粘进旺旺之前就看见"这张券什么时候失效"
+    const expiryDate = expDay === 0 ? null : new Date(Date.UTC(2026, 0, 1) + expDay * 86400000);
+    const expiry = expiryDate ? expiryDate.toISOString().slice(0, 10) : '永久';
+    const past = !!expiryDate && expiryDate < new Date(new Date().toDateString());
     console.log('机器码  ' + mc.toUpperCase());
     console.log('注册码  ' + code);
     console.log('长度    ' + code.replace(/-/g, '').length + ' 字符');
-    console.log(verifyCode(code, mc) ? '自检    通过' : '');
+    console.log('到期    ' + expiry + (past ? '  ⚠ 已过期，只能用于测试' : ''));
+    // 自检失败不要当成"签发失败"：--expired 造出来的码本来就该被拒，
+    // 这时退出码非零会让批处理误以为没签出来。
+    let self;
+    try {
+      self = verifyCode(code, mc) ? '自检    通过' : '';
+    } catch (e) {
+      self = '自检    拒绝：' + e.message;
+    }
+    console.log(self);
   } else if (cmd === 'verify') {
     const [code, mc] = positional;
     console.log(verifyCode(code, mc));

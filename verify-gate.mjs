@@ -150,6 +150,39 @@ const b = await chromium.launch({
   await n.ctx.close();
 }
 
+// ---- 用例 5：右键与调试快捷键（激活页也要挡住，输入框例外）----
+{
+  console.log('\n【右键与快捷键】');
+  const ctx = await b.newContext({ viewport: { width: 1280, height: 860 } });
+  await ctx.addInitScript(mock);
+  const p = await ctx.newPage();
+  await p.goto(BASE + '/gate.html');
+  await p.waitForTimeout(600);
+
+  const body = await p.evaluate(() => {
+    const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    document.body.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  });
+  check('激活页屏蔽右键菜单', body === true, String(body));
+
+  // 买家习惯右键粘贴注册码，这一处必须留着，否则等于为了防泄漏把功能砍了
+  const inCode = await p.evaluate(() => {
+    const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    document.getElementById('code').dispatchEvent(ev);
+    return ev.defaultPrevented;
+  });
+  check('注册码输入框保留右键', inCode === false, String(inCode));
+
+  const f12 = await p.evaluate(() => {
+    const ev = new KeyboardEvent('keydown', { key: 'F12', bubbles: true, cancelable: true });
+    window.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  });
+  check('激活页吃掉 F12', f12 === true, '');
+  await ctx.close();
+}
+
 await b.close();
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

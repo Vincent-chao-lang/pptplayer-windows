@@ -132,6 +132,48 @@ node desktop/tools/sync-web.mjs     # dist/PPTPlayer.html -> desktop/web/index.h
 
 授权文件：`%APPDATA%\cn.pptplayer.desktop\license.lic`（macOS 为 `~/Library/Application Support/cn.pptplayer.desktop/`）。
 
+### 有效期怎么发、界面怎么显示（v0.6.0 起）
+
+码里本来就带到期日，但 v0.5.x 只在激活页露一句，装好之后人就看不见了——这等于
+「卖了一张有期限的券，却不告诉买家什么时候到期」。v0.6.0 起两处都显示：
+
+| 位置 | 显示 | 备注 |
+|---|---|---|
+| 关于面板（F1）→ 版权与联系 | 授权行：`永久` 或 `有效期至 2026-11-12（剩 12 天）` | 剩余 ≤30 天时整行标黄 |
+| 主窗口启动时 | 顶部提示条，6.4 秒后自动消失 | **只在 ≤30 天里出现**，永久授权永不打扰 |
+| 激活页（已激活时） | `授权有效期至 2026-11-12。` | 早就有 |
+
+签发侧：
+
+```bash
+node tools/license-keygen.mjs sign <机器码>                 # 永久
+node tools/license-keygen.mjs sign <机器码> --days 365      # 一年
+node tools/license-keygen.mjs sign <机器码> --expired       # 造一枚已过期的码，只用于测试
+```
+
+`sign` 现在会打印 `到期  YYYY-MM-DD` 或 `到期  永久`，粘进聊天窗口之前就能看见。
+
+**`--days` 传负数会直接报错**。这不是洁癖：`exp` 字段的 `0` 表示永久，负号若被夹到 0，
+就会悄悄发出一张不可回收的永久券，而且发的时候完全看不出来。要测过期路径用 `--expired`
+（写 `exp=1`，即 2026-01-02，必然在过去）。
+
+到期后：`license_status` 返回 `licensed=false` + 「这串注册码已于 X 到期」，
+播放器被闸门挡回激活页，提示语就是这句——不是「发给另一台电脑」那种误导文案。
+
+### 界面加固（v0.6.0 起）
+
+| 行为 | 实现 | 为什么 |
+|---|---|---|
+| 屏蔽右键菜单 | `document` 上 `contextmenu` 做 `preventDefault`（capture） | WebView2 默认菜单有「重新加载 / 另存为」，debug 构建里还有「检查」直开 DevTools |
+| 吃掉 F12 / `Ctrl+Shift+I J C K` / `Ctrl+U` | `window` 上 keydown 拦截，**只 preventDefault 不 stopPropagation** | 后面真正的快捷键（翻页、缩放）还得拿到事件 |
+| 激活页的注册码输入框**保留**右键 | `e.target.id === 'code'` 时放行 | 买家习惯右键粘贴，为了防泄漏把功能砍掉是本末倒置 |
+
+为什么不去关 WebView2 的 `AreDefaultContextMenusEnabled`：那要引 `webview2-com` 并写
+`#[cfg(windows)]` 分支，而这台机器上根本测不了；`contextmenu` 是标准事件，Chromium 内核
+下 `preventDefault` 就能压掉系统菜单，能用可测的方案就不引入测不了的分支。
+副作用要说清：**这挡的是顺手右键，不是逆向**——真正想看代码的人直接改 exe 就行，
+前端屏蔽只是把「一眼可见」变成「得动手」。
+
 ### 注册码格式
 
 73 字节 → Crockford Base32 **117 字符**（每 5 位一组便于核对）：
@@ -206,6 +248,7 @@ cd .. && node verify-gate.mjs                   # 前端闸门（需要 8877 端
 | 前端渲染/播放 | 双引擎回归（Chromium + WebKit），见上一级 `verify-*.mjs` |
 | 便携版 exe 实际运行 | **已在 Windows 上验证通过**（v0.1.0 起，含拖放、动画、音频、换文件） |
 | **按台授权（激活链路）** | **已在 Windows 真机验证通过（2026-10-31）**：未激活停在激活页，粘贴注册码后正常进入播放器 |
+| 右键屏蔽 / 授权有效期显示（v0.6.0 新增） | 前端 22 项由 `verify-shell.mjs` 覆盖；**Windows 真机待肉眼看一次**（右键无菜单、关于面板有授权行） |
 | CI 编译 + PE 静态结构 | 每轮自动核验（GUI 子系统、无 `WebView2Loader.dll`、`.rsrc` 图标已嵌入） |
 | **NSIS 安装包的实际安装** | **已在 Windows 真机验证通过（2026-10-31，v0.5.1）**：向导装完 → 启动 → 停在激活页 → 粘贴注册码 → 进入播放器 |
 

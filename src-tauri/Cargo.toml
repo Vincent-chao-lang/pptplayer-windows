@@ -1,6 +1,6 @@
 [package]
 name = "ppt-player"
-version = "0.5.1"
+version = "0.6.0"
 description = "本地 PPT 播放器（WebView2 内核，零联网）"
 edition = "2021"
 rust-version = "1.77.2"

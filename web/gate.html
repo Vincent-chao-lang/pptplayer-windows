@@ -120,6 +120,19 @@
   var machine = $('machine'), code = $('code'), go = $('go'), msg = $('msg'), copy = $('copy');
   var tauri = window.__TAURI__;
 
+  // 与主窗口一致：不要系统右键菜单，也不要能翻开源码的快捷键。
+  // 唯一例外是注册码输入框——买家习惯右键粘贴，那里留着。
+  document.addEventListener('contextmenu', function (e) {
+    if (e.target && e.target.id === 'code') return;
+    e.preventDefault();
+  }, true);
+  window.addEventListener('keydown', function (e) {
+    var k = (e.key || '').toLowerCase();
+    if (e.key === 'F12' ||
+        (e.ctrlKey && e.shiftKey && (k === 'i' || k === 'j' || k === 'c' || k === 'k')) ||
+        (e.ctrlKey && k === 'u')) e.preventDefault();
+  }, true);
+
   function setMsg(text, kind) {
     msg.textContent = text || '';
     msg.className = kind || '';
