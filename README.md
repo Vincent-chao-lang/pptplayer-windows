@@ -82,8 +82,10 @@ node tools/fetch-release.mjs --dry-run   # 只比对本地与 Release 差多少�
 node tools/fetch-release.mjs --tag v0.4.1 --out /tmp/old
 ```
 
-脚本先按体积比对本地文件与 Release，一致就跳过；下载完按 `SHA256SUMS.txt` 重算，
-对不上非零退出——**别把校验失败的包发给买家**。
+脚本先拉 Release 里 176 B 的 `SHA256SUMS.txt`，逐个哈希比对本地文件，一致就跳过；
+只下载不一致的那个，收尾再全量复算，对不上非零退出——**别把校验失败的包发给买家**。
+**不能只比体积**：改一句文案后 exe 体积可能一模一样（3,367,424 B 两次构建相同、内容不同），
+按体积判会把旧包当成最新的。
 
 **升版本要改两处**：`src-tauri/tauri.conf.json` 的 `version`（决定安装包文件名与 Release tag）
 和 `src-tauri/Cargo.toml` 的 `version`（决定 exe 内的版本资源）。

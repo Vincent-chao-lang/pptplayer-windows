@@ -52,36 +52,60 @@ try {
 const assets = (info.assets || []).filter((a) => !/^source code/i.test(a.name));
 const tagName = info.tagName;
 
-// 2) 和本地现状比一眼
+function sha256(file) {
+  return createHash('sha256').update(readFileSync(file)).digest('hex').toUpperCase();
+}
+
+// 2) 拿 Release 侧的校验表（176 B，先拉它比拉 3 MB 的包便宜）
+//    必须按哈希比，不能只看体积：改一句文案后 exe 体积可能一模一样
+//    （3,367,424 B 两次构建完全相同，但内容不同），按体积判会漏掉更新。
+mkdirSync(out, { recursive: true });
+const sumsAsset = assets.find((a) => /^SHA256SUMS\.txt$/i.test(a.name));
+const expect = new Map();
+if (sumsAsset) {
+  // 直接落到输出目录：它本来就是要交付的三个附件之一，不必另建临时文件
+  gh(['release', 'download', tagName, '-p', sumsAsset.name, '-D', out, '--clobber']);
+  for (const line of readFileSync(join(out, sumsAsset.name), 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^([0-9A-Fa-f]{64})\s+\*?(.+)$/);
+    if (m) expect.set(m[2].trim(), m[1].toUpperCase());
+  }
+}
+
+// 3) 逐个比哈希，定出要下载的
 const stale = [];
 for (const a of assets) {
+  if (a === sumsAsset) continue;
   const p = join(out, a.name);
-  if (!existsSync(p)) stale.push(`${a.name}（本地没有）`);
-  else {
-    const local = readFileSync(p).length;
-    if (local !== a.size) stale.push(`${a.name}（本地 ${local} B，Release ${a.size} B）`);
+  const want = expect.get(a.name);
+  if (!existsSync(p)) {
+    stale.push({ a, why: '本地没有' });
+  } else if (want && sha256(p) !== want) {
+    const sizeNote = readFileSync(p).length === a.size ? '体积相同但内容不同' : '体积也不同';
+    stale.push({ a, why: `哈希不符（${sizeNote}）` });
+  } else if (!want && readFileSync(p).length !== a.size) {
+    stale.push({ a, why: `体积不符（Release ${a.size} B）` });
   }
 }
 
 console.log(`Release ${tagName}${info.isPrerelease ? '（预发布）' : ''}，${assets.length} 个产物 → ${out}`);
 for (const a of assets) console.log(`  ${a.name}  ${a.size} B`);
+if (!expect.size) console.log('\n⚠ Release 里没有 SHA256SUMS.txt，只能按体积判断。');
 if (stale.length) {
   console.log('\n本地与 Release 不一致：');
-  for (const s of stale) console.log(`  - ${s}`);
+  for (const s of stale) console.log(`  - ${s.a.name}：${s.why}`);
 } else {
-  console.log('\n本地已是最新，无需下载。');
+  console.log('\n本地已是最新（逐个哈希比对一致），无需下载。');
 }
 
 if (dryRun || stale.length === 0) process.exit(0);
 
-// 3) 下载（--clobber 覆盖同名旧文件）
-mkdirSync(out, { recursive: true });
-for (const a of assets) {
+// 4) 只下载不一致的（--clobber 覆盖同名旧文件）
+for (const { a } of stale) {
   gh(['release', 'download', tagName, '-p', a.name, '-D', out, '--clobber']);
   console.log(`downloaded ${a.name}`);
 }
 
-// 4) 按 SHA256SUMS.txt 校验，不通过就非零退出（别把坏包发出去）
+// 5) 收尾全量复算，不通过就非零退出（别把坏包发出去）
 const sumsPath = join(out, 'SHA256SUMS.txt');
 if (!existsSync(sumsPath)) {
   console.error('\n没有 SHA256SUMS.txt，跳过校验。');
