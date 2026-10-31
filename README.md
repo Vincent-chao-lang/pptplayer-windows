@@ -132,6 +132,25 @@ node desktop/tools/sync-web.mjs     # dist/PPTPlayer.html -> desktop/web/index.h
 
 授权文件：`%APPDATA%\cn.pptplayer.desktop\license.lic`（macOS 为 `~/Library/Application Support/cn.pptplayer.desktop/`）。
 
+### 卸载 / 重装对授权的影响（已核对 tauri-bundler 的 installer.nsi）
+
+NSIS 卸载器的确认页上有一个「删除应用数据」复选框，**默认不勾**（模板里只
+`CreateWindowEx` 建控件，没有 `BM_SETCHECK`）。它决定 `license.lic` 还在不在：
+
+| 场景 | `license.lic` | 结果 |
+|---|---|---|
+| 卸载（保持默认）→ 重装 | 保留 | 进播放器直接可用，剩余天数照旧 |
+| 卸载时勾了「删除应用数据」 | `RmDir /r "$APPDATA\${BUNDLEID}"` 整目录删掉 | 回激活页；机器码不变，贴回原码即可 |
+| 覆盖安装 / 升级 | 保留 | 码继续有效（v0.5.1 → v0.6.0 未改 `VER`） |
+| 换 Windows 用户账户 | 读不到（`%APPDATA%` 按用户隔离） | 回激活页；SMBIOS 与账户无关，机器码不变 |
+
+安装目录 `%LOCALAPPDATA%\PPTPlayer`（`installMode: currentUser`）**总是**被删；
+数据目录 `%APPDATA%` / `%LOCALAPPDATA%` 下的 `cn.pptplayer.desktop` 只在勾选时删。
+
+到期日是**绝对日期**（`exp` = 相对 2026-01-01 的天数），不是「从激活起算 N 天」，
+所以反复重装既不刷新也不扣期限。唯一能影响它的是系统时钟——离线校验只能比本机日期，
+买家把时间往回调，剩余天数就变大。这是离线授权的固有代价，**不要在商品页承诺"改时间无效"**。
+
 ### 有效期怎么发、界面怎么显示（v0.6.0 起）
 
 码里本来就带到期日，但 v0.5.x 只在激活页露一句，装好之后人就看不见了——这等于
