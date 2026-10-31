@@ -11,3 +11,7 @@ Thumbs.db
 
 # 本地调试截图（激活页样张，非交付物）
 /gate-*.png
+
+# 授权界面样张（本地核对用，非交付物）
+/shot-lictip.png
+/shot-about-license.png
