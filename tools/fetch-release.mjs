@@ -13,7 +13,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -97,7 +97,19 @@ if (stale.length) {
   console.log('\n本地已是最新（逐个哈希比对一致），无需下载。');
 }
 
-if (dryRun || stale.length === 0) process.exit(0);
+// 同目录里的旧版本包：安装包文件名带版本号，不会互相覆盖，容易越攒越多，
+// 然后某天照手顺抓了目录里第一个 exe 发给买家，发的是几个月前那版。
+function reportStrays() {
+  const current = new Set(assets.map((a) => a.name));
+  const strays = readdirSync(out).filter(
+    (f) => /_\d+\.\d+\.\d+_x64-setup\.exe$/i.test(f) && !current.has(f)
+  );
+  if (!strays.length) return;
+  console.log('\n目录里还有旧版本的包（本脚本不会删）：');
+  for (const f of strays) console.log(`  - ${f}  ${readFileSync(join(out, f)).length} B`);
+}
+
+if (dryRun || stale.length === 0) { reportStrays(); process.exit(0); }
 
 // 4) 只下载不一致的（--clobber 覆盖同名旧文件）
 for (const { a } of stale) {
@@ -137,4 +149,6 @@ if (bad) {
   console.error(`\n${bad} 项校验失败，不要发布这个目录里的包。`);
   process.exit(1);
 }
+
+reportStrays();
 console.log(`\n完成：${out} 与 Release ${tagName} 一致。`);
